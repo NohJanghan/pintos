@@ -1,5 +1,9 @@
 # pintos
 PintOS project for GIST OS course (EC4205)
 
+# Teammates 
+Noh Janghan
+Kim Yooseung
+
 # Checkpoints
-1. Initial Setting(e000c8c): make the container and initalize the pintos project.
+1. Initial Setting(e000c8c): make the container and initalize the pintos project
