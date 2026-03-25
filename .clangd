@@ -1,0 +1,9 @@
+CompileFlags:
+  Add:
+    - -I/workspaces/pintos-project/pintos/src
+    - -I/workspaces/pintos-project/pintos/src/lib
+    - -I/workspaces/pintos-project/pintos/src/lib/kernel
+# Uncomment by stage (userprog --> 1,2 / vm --> 3)
+#   - -DUSERPROG
+#   - -DFILESYS
+#   - -DVM
