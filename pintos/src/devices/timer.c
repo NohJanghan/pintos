@@ -22,7 +22,7 @@
 static int64_t ticks;
 
 /* List of processes needed to wake up later,
-   which is sorted by the ticks_to_wakeup field*/
+   which is sorted by the tick_to_wakeup field*/
 static struct list sleep_list;
 
 /* Number of loops per timer tick.
@@ -103,9 +103,9 @@ timer_sleep (int64_t ticks)
     return;
 
   enum intr_level old_level = intr_disable();
-  int64_t ticks_to_wakeup = ticks + timer_ticks();
+  int64_t tick_to_wakeup = ticks + timer_ticks();
 
-  thread_current()->ticks_to_wakeup = ticks_to_wakeup;
+  thread_current()->tick_to_wakeup = tick_to_wakeup;
   list_insert_ordered(&sleep_list, &thread_current()->elem, tick_less, NULL);
 
   thread_block();
@@ -194,7 +194,7 @@ timer_interrupt (struct intr_frame *args UNUSED)
   {
     struct thread *t = list_entry(e, struct thread, elem);
 
-    if (t->ticks_to_wakeup <= ticks)
+    if (t->tick_to_wakeup <= ticks)
     {
       e = list_remove(e);
       thread_unblock(t);
@@ -276,12 +276,12 @@ real_time_delay (int64_t num, int32_t denom)
   busy_wait (loops_per_tick * num / 1000 * TIMER_FREQ / (denom / 1000));
 }
 
-/* Returns true if the ticks_to_wakeup field of thread A is less than
+/* Returns true if the tick_to_wakeup field of thread A is less than
    This implements the list_less_func type.*/
 static bool
 tick_less(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED)
 {
   const struct thread *t1 = list_entry(a, struct thread, elem);
   const struct thread *t2 = list_entry(b, struct thread, elem);
-  return t1->ticks_to_wakeup < t2->ticks_to_wakeup;
+  return t1->tick_to_wakeup < t2->tick_to_wakeup;
 }
