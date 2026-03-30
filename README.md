@@ -7,3 +7,4 @@ Kim Yooseung
 
 # Checkpoints
 1. Initial Setting(e000c8c): make the container and initalize the pintos project
+1. Project 1(1f474d0): alarm clock
