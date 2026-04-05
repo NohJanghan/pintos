@@ -297,7 +297,8 @@ cond_wait (struct condition *cond, struct lock *lock)
   ASSERT (lock_held_by_current_thread (lock));
 
   sema_init (&waiter.semaphore, 0);
-  list_push_back (&cond->waiters, &waiter.elem);
+  /* Priority-Scheduling */
+  list_insert_ordered(&cond->waiters, &waiter.elem, high_sema_priority, NULL);
   lock_release (lock);
   sema_down (&waiter.semaphore);
   lock_acquire (lock);
@@ -337,4 +338,28 @@ cond_broadcast (struct condition *cond, struct lock *lock)
 
   while (!list_empty (&cond->waiters))
     cond_signal (cond, lock);
+}
+
+/* Comparator functions for priority-scheduling.
+   Refer to `list_less_func` in `list.h` */
+bool high_sema_priority(const struct list_elem *elem_a, const struct list_elem *elem_b, void *aux UNUSED) {
+  struct semaphore_elem *sema_a = list_entry(elem_a, struct semaphore_elem, elem);
+  struct semaphore_elem *sema_b = list_entry(elem_b, struct semaphore_elem, elem);
+
+  /* if a sema's waiter is empty, set the sema as the lower priority */
+  if (list_empty(&sema_a->semaphore.waiters)) {
+    return false;
+  }
+  if (list_empty(&sema_b->semaphore.waiters)){
+    return true;
+  }
+  struct list *waiter_a = &(sema_a->semaphore.waiters);
+  struct list *waiter_b = &(sema_b->semaphore.waiters);
+
+  /* get the priority of the thread at the front of the waiter */
+  tid_t priority_a = list_entry(list_front(waiter_a), struct thread, elem)->priority;
+  tid_t priority_b = list_entry(list_front(waiter_b), struct thread, elem)->priority;
+
+  /* compare priorities between two semaphores with their threads' priorities*/
+  return priority_a > priority_b;
 }
