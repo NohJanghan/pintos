@@ -4,6 +4,7 @@
 #include <random.h>
 #include <stdio.h>
 #include <string.h>
+#include "list.h"
 #include "threads/flags.h"
 #include "threads/interrupt.h"
 #include "threads/intr-stubs.h"
@@ -208,6 +209,7 @@ thread_create (const char *name, int priority,
 
   /* Add to run queue. */
   thread_unblock (t);
+  cmp_current_priority(); /* 추가된 thread의 priority가 현재 thread의 priority보다 높은 경우 전환 */
 
   return tid;
 }
@@ -245,7 +247,9 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
-  list_push_back (&ready_list, &t->elem);
+  /* Priority-Scheduling */
+  list_insert_ordered (&ready_list, &t->elem, high_thread_priority, NULL);
+
   t->status = THREAD_READY;
   intr_set_level (old_level);
 }
@@ -316,7 +320,9 @@ thread_yield (void)
 
   old_level = intr_disable ();
   if (cur != idle_thread)
-    list_push_back (&ready_list, &cur->elem);
+    /* Priority-Scheduling */
+    list_insert_ordered (&ready_list, &cur->elem, high_thread_priority, NULL);
+
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
@@ -344,6 +350,7 @@ void
 thread_set_priority (int new_priority)
 {
   thread_current ()->priority = new_priority;
+  cmp_current_priority(); /* 현재 thread의 priority가 낮게 변경된 경우 thread 전환 */
 }
 
 /* Returns the current thread's priority. */
@@ -585,3 +592,29 @@ allocate_tid (void)
 /* Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
+
+/* Comparator functions for priority-scheduling.
+   Refer to `list_less_func` in `list.h` */
+bool high_thread_priority(const struct list_elem *elem_a, const struct list_elem *elem_b, void *aux UNUSED) {
+  /* given pointer of `thread.elem`, find pointer of `thread` */
+  struct thread *thread_a = list_entry(elem_a, struct thread, elem);
+  struct thread *thread_b = list_entry(elem_b, struct thread, elem);
+
+  /* compare priorities between two threads */
+  return thread_a->priority > thread_b->priority;
+}
+
+/* Compare the current thread's priority with the priority of threads in ready list
+   and yield the CPU if the priority of latter is higher.*/
+void cmp_current_priority() {
+  if (list_empty(&ready_list)) {
+    return;
+  }
+
+  tid_t cur_priority = thread_current()->priority;
+  tid_t front_priority = list_entry(list_front(&ready_list), struct thread, elem)->priority;
+
+  if (cur_priority < front_priority) {
+    thread_yield();
+  }
+}
