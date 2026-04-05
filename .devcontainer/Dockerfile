@@ -12,6 +12,7 @@ RUN apt-get update && apt-get install -y \
     xorg-dev \
     libncurses5-dev \
     git \
+    sudo \
     && rm -rf /var/lib/apt/lists/*
 
 # make symlink
@@ -27,9 +28,17 @@ RUN wget -O bochs-2.6.2.tar.gz https://sourceforge.net/projects/bochs/files/boch
     make install && \
     rm -rf /tmp/bochs-2.6.2*
 
+# Create non-root user with same UID/GID as local user (1000)
+RUN groupadd -g 1000 pintos && \
+    useradd -m -u 1000 -g 1000 -s /bin/bash pintos && \
+    echo "pintos ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+
 # VS Code DevContainer mount default workspace
-RUN mkdir -p /workspaces/pintos-project
+RUN mkdir -p /workspaces/pintos-project && \
+    chown -R pintos:pintos /workspaces/pintos-project
 WORKDIR /workspaces/pintos-project
+
+USER pintos
 
 # set PATH
 ENV PATH="${PATH}:/workspaces/pintos-project/pintos/src/utils"

@@ -12,7 +12,7 @@
             ]
         }
     },
-    "remoteUser": "root",
+    "remoteUser": "pintos",
     "workspaceFolder": "/workspaces/pintos-project",
     "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/pintos-project,type=bind",
     "postCreateCommand": "echo 'Container is ready.'"
