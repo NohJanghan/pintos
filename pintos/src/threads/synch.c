@@ -69,7 +69,7 @@ sema_down (struct semaphore *sema)
   while (sema->value == 0)
     {
       /* Priority-Scheduling */
-      list_insert_ordered (&sema->waiters, &thread_current ()->elem, high_thread_priority, NULL);
+      list_insert_ordered (&sema->waiters, &thread_current ()->elem, higher_thread_priority, NULL);
       thread_block ();
     }
   sema->value--;
@@ -115,12 +115,12 @@ sema_up (struct semaphore *sema)
 
   old_level = intr_disable ();
   if (!list_empty (&sema->waiters)) {
-    list_sort(&sema->waiters, high_thread_priority, NULL);
+    list_sort(&sema->waiters, higher_thread_priority, NULL);
     thread_unblock (list_entry (list_pop_front (&sema->waiters),
                                 struct thread, elem));
   }
   sema->value++;
-  cmp_current_priority(); /* yield the CPU if necessary */
+  thread_preemption(); /* yield the CPU if necessary */
   intr_set_level (old_level);
 }
 
@@ -208,7 +208,7 @@ lock_acquire (struct lock *lock)
     cur_thread->wait_on_lock = lock; /* 현재 thread가 기다리는 lock 저장 */
 
     /* 현재 lock holder의 donation 리스트에 추가 (단, 역시 priority 기준으로)*/
-    list_insert_ordered(&lock->holder->donations, &cur_thread->donation_elem, high_thread_donation_priority, NULL);
+    list_insert_ordered(&lock->holder->donations, &cur_thread->donation_elem, higher_thread_donation_priority, NULL);
 
     donate_priority(cur_thread); /* 현재 thread의 priority를 donation */
   }
@@ -321,7 +321,7 @@ cond_wait (struct condition *cond, struct lock *lock)
 
   sema_init (&waiter.semaphore, 0);
   /* Priority-Scheduling */
-  list_insert_ordered(&cond->waiters, &waiter.elem, high_sema_priority, NULL);
+  list_insert_ordered(&cond->waiters, &waiter.elem, higher_sema_priority, NULL);
   lock_release (lock);
   sema_down (&waiter.semaphore);
   lock_acquire (lock);
@@ -343,7 +343,7 @@ cond_signal (struct condition *cond, struct lock *lock UNUSED)
   ASSERT (lock_held_by_current_thread (lock));
 
   if (!list_empty (&cond->waiters)) {
-    list_sort(&cond->waiters, high_sema_priority, NULL);
+    list_sort(&cond->waiters, higher_sema_priority, NULL);
     sema_up (&list_entry (list_pop_front (&cond->waiters),
                           struct semaphore_elem, elem)->semaphore);
   }
@@ -367,7 +367,7 @@ cond_broadcast (struct condition *cond, struct lock *lock)
 
 /* Comparator functions for priority-scheduling.
    Refer to `list_less_func` in `list.h` */
-bool high_sema_priority(const struct list_elem *elem_a, const struct list_elem *elem_b, void *aux UNUSED) {
+bool higher_sema_priority(const struct list_elem *elem_a, const struct list_elem *elem_b, void *aux UNUSED) {
   struct semaphore_elem *sema_a = list_entry(elem_a, struct semaphore_elem, elem);
   struct semaphore_elem *sema_b = list_entry(elem_b, struct semaphore_elem, elem);
 

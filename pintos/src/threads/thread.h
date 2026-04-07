@@ -158,13 +158,13 @@ void thread_update_donation_list(struct thread *);
 
 void thread_remove_lock_donations(struct lock *);
 
-bool high_thread_priority(const struct list_elem *,
+bool higher_thread_priority(const struct list_elem *,
                               const struct list_elem *,
                               void *aux);
 
-bool high_thread_donation_priority(const struct list_elem *,
+bool higher_thread_donation_priority(const struct list_elem *,
                               const struct list_elem *,
                               void *aux);
-void cmp_current_priority(void);
+void thread_preemption(void);
 
 #endif /* threads/thread.h */

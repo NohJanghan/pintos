@@ -50,7 +50,7 @@ void cond_broadcast (struct condition *, struct lock *);
 
 /* Comparator functions for priority-scheduling.
    Refer to `list_less_func` in `list.h` */
-bool high_sema_priority(const struct list_elem *, const struct list_elem *,
+bool higher_sema_priority(const struct list_elem *, const struct list_elem *,
                           void *aux);
 
 #endif /* threads/synch.h */

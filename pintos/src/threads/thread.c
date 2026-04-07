@@ -209,7 +209,7 @@ thread_create (const char *name, int priority,
 
   /* Add to run queue. */
   thread_unblock (t);
-  cmp_current_priority(); /* 추가된 thread의 priority가 현재 thread의 priority보다 높은 경우 전환 */
+  thread_preemption(); /* 추가된 thread의 priority가 현재 thread의 priority보다 높은 경우 전환 */
 
   return tid;
 }
@@ -248,7 +248,7 @@ thread_unblock (struct thread *t)
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
   /* Priority-Scheduling */
-  list_insert_ordered (&ready_list, &t->elem, high_thread_priority, NULL);
+  list_insert_ordered (&ready_list, &t->elem, higher_thread_priority, NULL);
 
   t->status = THREAD_READY;
   intr_set_level (old_level);
@@ -321,7 +321,7 @@ thread_yield (void)
   old_level = intr_disable ();
   if (cur != idle_thread)
     /* Priority-Scheduling */
-    list_insert_ordered (&ready_list, &cur->elem, high_thread_priority, NULL);
+    list_insert_ordered (&ready_list, &cur->elem, higher_thread_priority, NULL);
 
   cur->status = THREAD_READY;
   schedule ();
@@ -354,7 +354,7 @@ thread_set_priority (int new_priority)
 
   thread_update_priority(cur_thread); /* priority가 변경되었으므로 업데이트 로직 수행 */
   donate_priority(cur_thread); /* 변경된 priority를 기준으로 nested donation 수행 */
-  cmp_current_priority(); /* 현재 thread의 priority가 낮게 변경된 경우 thread 전환 */
+  thread_preemption(); /* 현재 thread의 priority가 낮게 변경된 경우 thread 전환 */
 }
 
 /* Returns the current thread's priority. */
@@ -650,7 +650,7 @@ void donate_priority(struct thread *cur_thread) {
   }
 }
 
-bool high_thread_priority(const struct list_elem *elem_a, const struct list_elem *elem_b, void *aux UNUSED) {
+bool higher_thread_priority(const struct list_elem *elem_a, const struct list_elem *elem_b, void *aux UNUSED) {
   /* void *aux: given auxiliary data, to match args of typedef `list_less_func` in `list.h` */
 
   /* given pointer of `thread.elem`, find pointer of `thread` */
@@ -663,7 +663,7 @@ bool high_thread_priority(const struct list_elem *elem_a, const struct list_elem
 
 /* Compare the current thread's priority with the priority of threads in ready list
    and yield the CPU if the priority of latter is higher.*/
-bool high_thread_donation_priority(const struct list_elem *elem_a, const struct list_elem *elem_b, void *aux UNUSED) {
+bool higher_thread_donation_priority(const struct list_elem *elem_a, const struct list_elem *elem_b, void *aux UNUSED) {
   /* void *aux: given auxiliary data, to match args of typedef `list_less_func` in `list.h` */
 
   /* given pointer of `thread.elem`, find pointer of `thread` */
@@ -678,7 +678,7 @@ void thread_update_ready_list(struct thread *t) {
   enum intr_level old_level = intr_disable();
   if (t->status == THREAD_READY) {
     list_remove(&t->elem);
-    list_insert_ordered(&ready_list, &t->elem, high_thread_priority, NULL);
+    list_insert_ordered(&ready_list, &t->elem, higher_thread_priority, NULL);
   }
   intr_set_level(old_level);
 }
@@ -688,7 +688,7 @@ void thread_update_waiters(struct thread *t) {
   if (t->status == THREAD_BLOCKED && t->wait_on_lock != NULL) {
     struct list *waiters = &t->wait_on_lock->semaphore.waiters;
     list_remove(&t->elem);
-    list_insert_ordered(waiters, &t->elem, high_thread_priority, NULL);
+    list_insert_ordered(waiters, &t->elem, higher_thread_priority, NULL);
   }
   intr_set_level(old_level);
 }
@@ -698,7 +698,7 @@ void thread_update_donation_list(struct thread *t) {
   if (t->wait_on_lock != NULL && t->wait_on_lock->holder != NULL) {
     struct thread *holder_thread = t->wait_on_lock->holder;
     list_remove(&t->donation_elem);
-    list_insert_ordered(&holder_thread->donations, &t->donation_elem, high_thread_donation_priority, NULL);
+    list_insert_ordered(&holder_thread->donations, &t->donation_elem, higher_thread_donation_priority, NULL);
   }
   intr_set_level(old_level);
 }
@@ -719,7 +719,7 @@ void thread_remove_lock_donations(struct lock *lock) {
   thread_update_priority(cur_thread); /* update priority */
 }
 
-void cmp_current_priority() {
+void thread_preemption() {
   if (list_empty(&ready_list)) {
     return;
   }
