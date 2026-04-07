@@ -96,6 +96,12 @@ struct thread
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
 
+    /* Priority-Scheduling */
+    int base_priority; /* donation 받기 전 기본 priority */
+    struct lock *wait_on_lock; /* 기다리고 있는 lock */
+    struct list donations; /* 받은 donation (다른 thread의 donation_elem의 list) --> 내림차순 정렬*/
+    struct list_elem donation_elem; /* 다른 thread의 donation에 포함되기 위한 list_elem */
+
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
@@ -142,7 +148,21 @@ int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
 
 /* Comparator functions for priority-scheduling */
+void thread_update_priority(struct thread *);
+
+void donate_priority(struct thread *);
+
+void thread_update_ready_list(struct thread *);
+void thread_update_waiters(struct thread *);
+void thread_update_donation_list(struct thread *);
+
+void thread_remove_lock_donations(struct lock *);
+
 bool high_thread_priority(const struct list_elem *,
+                              const struct list_elem *,
+                              void *aux);
+
+bool high_thread_donation_priority(const struct list_elem *,
                               const struct list_elem *,
                               void *aux);
 void cmp_current_priority(void);

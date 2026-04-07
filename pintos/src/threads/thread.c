@@ -349,7 +349,11 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority)
 {
-  thread_current ()->priority = new_priority;
+  struct thread *cur_thread = thread_current();
+  cur_thread->base_priority = new_priority;
+
+  thread_update_priority(cur_thread); /* priority가 변경되었으므로 업데이트 로직 수행 */
+  donate_priority(cur_thread); /* 변경된 priority를 기준으로 nested donation 수행 */
   cmp_current_priority(); /* 현재 thread의 priority가 낮게 변경된 경우 thread 전환 */
 }
 
@@ -477,6 +481,13 @@ init_thread (struct thread *t, const char *name, int priority)
   t->priority = priority;
   t->magic = THREAD_MAGIC;
   list_push_back (&all_list, &t->allelem);
+
+  /* Priority-Scheduling */
+  t->base_priority = priority; /* donation 받기 전 기본 priority */
+  t->wait_on_lock = NULL;
+  list_init(&t->donations);
+  /* donation_elem에는 명시적인 init 필요 X */
+  /* - */
 }
 
 /* Allocates a SIZE-byte frame at the top of thread T's stack and
@@ -595,7 +606,53 @@ uint32_t thread_stack_ofs = offsetof (struct thread, stack);
 
 /* Comparator functions for priority-scheduling.
    Refer to `list_less_func` in `list.h` */
+
+void thread_update_ready_list(struct thread *);
+void thread_update_waiters(struct thread *);
+void thread_update_donation_list(struct thread *);
+
+void thread_update_priority(struct thread *cur_thread) {
+  int max_donation = cur_thread->base_priority;
+  if (!list_empty(&cur_thread->donations)) {
+    /* donation 받은 thread가 있는 경우, 가장 높은 priority (즉 제일 앞에있는 thread의 priority)로 설정*/
+    const struct thread *highest_donation_thread = list_entry(list_front(&cur_thread->donations), struct thread, donation_elem);
+    max_donation = max_donation > highest_donation_thread->priority ? max_donation : highest_donation_thread->priority;
+  }
+  cur_thread->priority = max_donation;
+  thread_update_ready_list(cur_thread);
+  thread_update_waiters(cur_thread);
+  thread_update_donation_list(cur_thread);
+}
+
+void donate_priority(struct thread *cur_thread) {
+  int MAX_DONATION_DEPTH = 8; /* 최대 donation 깊이 */
+  int depth;
+
+  for (depth = 0; depth < MAX_DONATION_DEPTH; depth++) {
+    /* 더 이상 donation할 lock이 없는 경우 */
+    if (cur_thread->wait_on_lock == NULL) {
+      break;
+    }
+
+    struct thread *holder_thread = cur_thread->wait_on_lock->holder;
+    /* lock의 holder가 없는 경우 */
+    if (holder_thread == NULL) {
+      break;
+    }
+
+    /* holder가 현재 thread보다 priority가 높은 경우, 즉, donation이 필요한 상황이 아닌 경우 */
+    if (holder_thread->priority >= cur_thread->priority) {
+      break;
+    }
+    thread_update_priority(holder_thread); /* donation 수행 */
+
+    cur_thread = holder_thread; /* 다음 donation을 위해 현재 thread 업데이트 */
+  }
+}
+
 bool high_thread_priority(const struct list_elem *elem_a, const struct list_elem *elem_b, void *aux UNUSED) {
+  /* void *aux: given auxiliary data, to match args of typedef `list_less_func` in `list.h` */
+
   /* given pointer of `thread.elem`, find pointer of `thread` */
   struct thread *thread_a = list_entry(elem_a, struct thread, elem);
   struct thread *thread_b = list_entry(elem_b, struct thread, elem);
@@ -606,6 +663,62 @@ bool high_thread_priority(const struct list_elem *elem_a, const struct list_elem
 
 /* Compare the current thread's priority with the priority of threads in ready list
    and yield the CPU if the priority of latter is higher.*/
+bool high_thread_donation_priority(const struct list_elem *elem_a, const struct list_elem *elem_b, void *aux UNUSED) {
+  /* void *aux: given auxiliary data, to match args of typedef `list_less_func` in `list.h` */
+
+  /* given pointer of `thread.elem`, find pointer of `thread` */
+  struct thread *max_donation_thread_a = list_entry(elem_a, struct thread, donation_elem); /* thread pointer whose `donation_elem` is elem_a */
+  struct thread *max_donation_thread_b = list_entry(elem_b, struct thread, donation_elem); /* thread pointer whose `elem` is  elem_b */
+
+  /* compare priorities between two threads */
+  return max_donation_thread_a->priority > max_donation_thread_b->priority;
+}
+
+void thread_update_ready_list(struct thread *t) {
+  enum intr_level old_level = intr_disable();
+  if (t->status == THREAD_READY) {
+    list_remove(&t->elem);
+    list_insert_ordered(&ready_list, &t->elem, high_thread_priority, NULL);
+  }
+  intr_set_level(old_level);
+}
+
+void thread_update_waiters(struct thread *t) {
+  enum intr_level old_level = intr_disable();
+  if (t->status == THREAD_BLOCKED && t->wait_on_lock != NULL) {
+    struct list *waiters = &t->wait_on_lock->semaphore.waiters;
+    list_remove(&t->elem);
+    list_insert_ordered(waiters, &t->elem, high_thread_priority, NULL);
+  }
+  intr_set_level(old_level);
+}
+
+void thread_update_donation_list(struct thread *t) {
+  enum intr_level old_level = intr_disable();
+  if (t->wait_on_lock != NULL && t->wait_on_lock->holder != NULL) {
+    struct thread *holder_thread = t->wait_on_lock->holder;
+    list_remove(&t->donation_elem);
+    list_insert_ordered(&holder_thread->donations, &t->donation_elem, high_thread_donation_priority, NULL);
+  }
+  intr_set_level(old_level);
+}
+
+void thread_remove_lock_donations(struct lock *lock) {
+  struct thread *cur_thread = thread_current();
+  struct list_elem *cur_elem = list_begin(&cur_thread->donations);
+
+  while (cur_elem != list_end(&cur_thread->donations)) { /* donation list traversal */
+    struct thread *donated_thread = list_entry(cur_elem, struct thread, donation_elem);
+    if (donated_thread->wait_on_lock == lock) {
+      cur_elem = list_remove(cur_elem); /* remove from donation list */
+    }
+    else {
+      cur_elem = list_next(cur_elem);
+    }
+  }
+  thread_update_priority(cur_thread); /* update priority */
+}
+
 void cmp_current_priority() {
   if (list_empty(&ready_list)) {
     return;
